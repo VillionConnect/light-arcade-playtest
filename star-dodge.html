@@ -716,6 +716,19 @@
       const dashButton = document.getElementById("dashButton");
       const modePanel = document.getElementById("modePanel");
       const modeButtons = [...document.querySelectorAll(".mode-button")];
+      const spriteSources = {
+        ship: "assets/sprites/ship-ai.png",
+        meteor: "assets/sprites/meteor-ai.png",
+        prism: "assets/sprites/prism-ai.png",
+      };
+      const sprites = Object.fromEntries(
+        Object.entries(spriteSources).map(([key, src]) => {
+          const image = new Image();
+          image.decoding = "async";
+          image.src = src;
+          return [key, image];
+        })
+      );
 
       const storage = {
         get(key, fallback) {
@@ -1670,6 +1683,20 @@
 
       function drawMeteor(object) {
         drawObjectTrail(object, "#ff8d6b");
+        if (sprites.meteor.complete && sprites.meteor.naturalWidth) {
+          ctx.save();
+          ctx.translate(object.x, object.y);
+          ctx.rotate(object.angle);
+          const size = object.radius * 3.25;
+          if (!state.perf.lowPower) {
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = "rgba(255, 122, 58, 0.45)";
+          }
+          ctx.drawImage(sprites.meteor, -size / 2, -size / 2, size, size);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+          return;
+        }
         ctx.save();
         ctx.translate(object.x, object.y);
         ctx.rotate(object.angle);
@@ -1768,6 +1795,30 @@
 
       function drawCore(object) {
         drawObjectTrail(object, "#ffd166");
+        if (sprites.prism.complete && sprites.prism.naturalWidth) {
+          ctx.save();
+          ctx.translate(object.x, object.y);
+          ctx.rotate(object.angle);
+          ctx.globalCompositeOperation = "lighter";
+          if (!state.perf.lowPower) {
+            ctx.shadowBlur = 26;
+            ctx.shadowColor = "#79ffd7";
+          }
+          const pulse = 1 + Math.sin(state.time * 5 + object.sway) * 0.04;
+          const size = object.radius * 3.25 * pulse;
+          ctx.globalAlpha = 0.96;
+          ctx.drawImage(sprites.prism, -size / 2, -size / 2, size, size);
+          ctx.globalAlpha = 0.34;
+          ctx.strokeStyle = "#79ffd7";
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, object.radius * 1.45, object.radius * 0.52, state.time * 0.9, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = "source-over";
+          ctx.restore();
+          return;
+        }
         ctx.save();
         ctx.translate(object.x, object.y);
         ctx.rotate(object.angle);
@@ -1857,6 +1908,18 @@
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.shadowBlur = 0;
+        }
+
+        if (sprites.ship.complete && sprites.ship.naturalWidth) {
+          const size = player.radius * 4.3;
+          if (!state.perf.lowPower) {
+            ctx.shadowBlur = 22;
+            ctx.shadowColor = "rgba(125, 200, 255, 0.42)";
+          }
+          ctx.drawImage(sprites.ship, -size / 2, -size * 0.58, size, size);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+          return;
         }
 
         const flameHeight = (state.dashActive > 0 ? 44 : 25) + Math.sin(state.time * 24) * 5;
