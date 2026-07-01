@@ -492,7 +492,7 @@
       </div>
 
       <div class="actions">
-        <button class="icon-button" id="soundButton" type="button" aria-label="声音">
+        <button class="icon-button" id="soundButton" type="button" aria-label="音乐与音效">
           <svg id="soundIcon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M11 5 6 9H3v6h3l5 4Z"></path>
             <path d="M16 9.5a4 4 0 0 1 0 5"></path>
@@ -668,7 +668,7 @@
         },
         keys: new Set(),
         pointerX: null,
-        muted: storage.get("starDodgeMuted", "0") === "1",
+        muted: storage.get("starDodgeMutedV2", "0") === "1",
       };
 
       const player = {
@@ -780,7 +780,7 @@
         const leadNotes = [440, 523.25, 659.25, 587.33, 523.25, 440, 392, 329.63];
         const step = 0.24;
 
-        master.gain.value = 0.055;
+        master.gain.value = 0.13;
         filter.type = "lowpass";
         filter.frequency.value = 1600;
         filter.Q.value = 0.7;
@@ -799,7 +799,7 @@
           bass.type = "triangle";
           bass.frequency.value = bassNotes[i % bassNotes.length];
           bassAmp.gain.setValueAtTime(0.0001, t);
-          bassAmp.gain.exponentialRampToValueAtTime(i % 2 === 0 ? 0.16 : 0.09, t + 0.015);
+          bassAmp.gain.exponentialRampToValueAtTime(i % 2 === 0 ? 0.26 : 0.16, t + 0.015);
           bassAmp.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.82);
           bass.connect(bassAmp).connect(master);
           bass.start(t);
@@ -811,7 +811,7 @@
             lead.type = "square";
             lead.frequency.value = leadNotes[(i / 2) % leadNotes.length];
             leadAmp.gain.setValueAtTime(0.0001, t + 0.04);
-            leadAmp.gain.exponentialRampToValueAtTime(0.045, t + 0.06);
+            leadAmp.gain.exponentialRampToValueAtTime(0.095, t + 0.06);
             leadAmp.gain.exponentialRampToValueAtTime(0.0001, t + step * 1.4);
             lead.connect(leadAmp).connect(master);
             lead.start(t + 0.04);
@@ -829,7 +829,7 @@
             noiseFilter.type = "highpass";
             noiseFilter.frequency.value = 4200;
             noiseAmp.gain.setValueAtTime(0.0001, t);
-            noiseAmp.gain.exponentialRampToValueAtTime(0.026, t + 0.008);
+            noiseAmp.gain.exponentialRampToValueAtTime(0.05, t + 0.008);
             noiseAmp.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
             noise.connect(noiseFilter).connect(noiseAmp).connect(master);
             noise.start(t);
@@ -847,6 +847,7 @@
         if (state.muted || music) return;
         const ac = ensureAudio();
         if (!ac) return;
+        tone(330, 0.08, "triangle", 0.035, 1.2);
         const loop = () => {
           if (!music || state.muted) return;
           const now = ac.currentTime;
@@ -1776,7 +1777,7 @@
       });
       soundButton.addEventListener("click", () => {
         state.muted = !state.muted;
-        storage.set("starDodgeMuted", state.muted ? "1" : "0");
+        storage.set("starDodgeMutedV2", state.muted ? "1" : "0");
         updateSoundIcon();
         if (state.muted) {
           stopMusic();
