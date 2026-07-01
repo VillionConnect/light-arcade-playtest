@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -375,6 +375,34 @@
       border-color: rgba(121, 255, 215, 0.42);
     }
 
+    .coach {
+      position: absolute;
+      z-index: 4;
+      left: 50%;
+      bottom: max(104px, calc(env(safe-area-inset-bottom) + 96px));
+      min-height: 34px;
+      max-width: min(420px, calc(100vw - 32px));
+      padding: 8px 12px;
+      border: 1px solid rgba(121, 255, 215, 0.26);
+      border-radius: 8px;
+      background: rgba(7, 16, 30, 0.68);
+      color: #f8fbff;
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.26);
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.35;
+      transform: translateX(-50%);
+      pointer-events: none;
+      backdrop-filter: blur(12px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .coach.hidden {
+      display: block;
+      opacity: 0;
+      transform: translateX(-50%) translateY(8px);
+    }
+
     .hidden {
       display: none;
     }
@@ -451,6 +479,19 @@
 
       .mark {
         width: 88px;
+      }
+
+      .touch-button {
+        width: clamp(62px, 17vw, 82px);
+      }
+
+      #dashButton {
+        width: clamp(74px, 21vw, 96px);
+      }
+
+      .coach {
+        bottom: max(112px, calc(env(safe-area-inset-bottom) + 104px));
+        font-size: 12px;
       }
     }
 
@@ -552,19 +593,33 @@
             <small>评级</small>
             <strong id="resultRank">C</strong>
           </div>
+          <div class="result-item">
+            <small>存活</small>
+            <strong id="resultTime">0s</strong>
+          </div>
+          <div class="result-item">
+            <small>最高连击</small>
+            <strong id="resultCombo">x1.0</strong>
+          </div>
+          <div class="result-item">
+            <small>擦身</small>
+            <strong id="resultNear">0</strong>
+          </div>
         </div>
         <button class="start-button" id="startButton" type="button">开始</button>
       </div>
     </section>
 
+    <div class="coach hidden" id="coach">按住屏幕拖动飞船，右下角闪电可冲刺。</div>
+
     <nav class="touch-controls" aria-label="移动">
       <div class="touch-group">
-        <button class="touch-button" id="leftButton" type="button" aria-label="左">
+        <button class="touch-button" id="leftButton" type="button" aria-label="左移">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="m15 18-6-6 6-6"></path>
           </svg>
         </button>
-        <button class="touch-button" id="rightButton" type="button" aria-label="右">
+        <button class="touch-button" id="rightButton" type="button" aria-label="右移">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="m9 18 6-6-6-6"></path>
           </svg>
@@ -596,6 +651,10 @@
       const resultScore = document.getElementById("resultScore");
       const resultBest = document.getElementById("resultBest");
       const resultRank = document.getElementById("resultRank");
+      const resultTime = document.getElementById("resultTime");
+      const resultCombo = document.getElementById("resultCombo");
+      const resultNear = document.getElementById("resultNear");
+      const coach = document.getElementById("coach");
       const startButton = document.getElementById("startButton");
       const soundButton = document.getElementById("soundButton");
       const soundIcon = document.getElementById("soundIcon");
@@ -638,6 +697,11 @@
         combo: 0,
         comboTimer: 0,
         multiplier: 1,
+        maxCombo: 0,
+        nearMisses: 0,
+        hitsTaken: 0,
+        coachText: "",
+        coachTimer: 0,
         sector: 1,
         time: 0,
         scroll: 0,
@@ -699,11 +763,43 @@
         return String(Math.max(0, Math.floor(value)));
       }
 
+      function formatTime(value) {
+        return `${Math.max(0, Math.floor(value))}s`;
+      }
+
       function rankFor(score) {
         if (score >= 4200) return "S";
         if (score >= 2800) return "A";
         if (score >= 1500) return "B";
-        return "C";
+        if (score >= 700) return "C";
+        return "D";
+      }
+
+      function nextRankHint(score) {
+        const ladder = [
+          { rank: "C", score: 700 },
+          { rank: "B", score: 1500 },
+          { rank: "A", score: 2800 },
+          { rank: "S", score: 4200 },
+        ];
+        const next = ladder.find((item) => score < item.score);
+        if (!next) return "已达到最高评级";
+        return `距 ${next.rank} 级还差 ${Math.ceil(next.score - score)} 分`;
+      }
+
+      function setCoach(text, duration = 2.6) {
+        state.coachText = text;
+        state.coachTimer = duration;
+        coach.textContent = text;
+        coach.classList.remove("hidden");
+      }
+
+      function updateCoach(dt) {
+        if (state.coachTimer <= 0) return;
+        state.coachTimer -= dt;
+        if (state.coachTimer <= 0) {
+          coach.classList.add("hidden");
+        }
       }
 
       function configurePerformance() {
@@ -961,6 +1057,9 @@
           resultScore.textContent = formatScore(state.score);
           resultBest.textContent = formatScore(state.best);
           resultRank.textContent = rankFor(state.score);
+          resultTime.textContent = formatTime(state.time);
+          resultCombo.textContent = `x${(1 + Math.min(3, state.maxCombo * 0.07)).toFixed(1)}`;
+          resultNear.textContent = String(state.nearMisses);
         }
         overlay.classList.remove("hidden");
       }
@@ -976,6 +1075,11 @@
         state.combo = 0;
         state.comboTimer = 0;
         state.multiplier = 1;
+        state.maxCombo = 0;
+        state.nearMisses = 0;
+        state.hitsTaken = 0;
+        state.coachTimer = 0;
+        coach.classList.add("hidden");
         state.sector = 1;
         state.time = 0;
         state.scroll = 0;
@@ -997,6 +1101,7 @@
         player.lean = 0;
         player.trail = [];
         overlay.classList.add("hidden");
+        setCoach(state.perf.mobile ? "按住屏幕横向拖动，右下角闪电可冲刺。" : "方向键或 A/D 移动，空格冲刺。", 4.2);
         updateHud();
       }
 
@@ -1021,7 +1126,7 @@
         playSound("hit");
         stopMusic();
         updateHud();
-        showOverlay("航线中断", `抵达第 ${String(state.sector).padStart(2, "0")} 星域`, "再来一局", true);
+        showOverlay("航线中断", `存活 ${formatTime(state.time)} · 擦身 ${state.nearMisses} 次 · ${nextRankHint(state.score)}`, "再来一局", true);
       }
 
       function addFloater(text, x, y, color = "#f8fbff") {
@@ -1107,6 +1212,23 @@
 
       function spawnWave() {
         const roll = Math.random();
+        if (state.time < 3.2) {
+          state.objects.push(makeObject("core"));
+          return;
+        }
+        if (state.time < 10) {
+          if (roll < 0.64) {
+            state.objects.push(makeObject("core"));
+          } else if (roll < 0.84) {
+            spawnLine("core", 3, rand(0, 20));
+          } else {
+            const meteor = makeObject("meteor");
+            meteor.speed *= 0.58;
+            meteor.radius *= 0.88;
+            state.objects.push(meteor);
+          }
+          return;
+        }
         if (state.lives < state.maxLives && roll > 0.91) {
           state.objects.push(makeObject("shield"));
           return;
@@ -1142,6 +1264,7 @@
       function collectObject(object) {
         if (object.type === "core") {
           state.combo += 1;
+          state.maxCombo = Math.max(state.maxCombo, state.combo);
           state.comboTimer = 3.1;
           state.multiplier = 1 + Math.min(3, state.combo * 0.07);
           const gain = Math.round(12 * state.multiplier + Math.min(state.combo, 16));
@@ -1168,6 +1291,7 @@
           state.comboTimer = 0;
           state.multiplier = 1;
           state.lives -= 1;
+          state.hitsTaken += 1;
           state.shake = 0.28;
           state.flash = 0.2;
           state.invincible = 1.35;
@@ -1185,6 +1309,7 @@
 
         const difficulty = Math.min(2.35, 1.18 + state.time / 42);
         state.time += dt;
+        updateCoach(dt);
         state.scroll += dt * (126 + difficulty * 72);
         state.sector = 1 + Math.floor(state.score / 450);
         state.spawnTimer -= dt;
@@ -1206,10 +1331,10 @@
 
         if (state.spawnTimer <= 0) {
           spawnWave();
-          state.spawnTimer = Math.max(0.16, rand(0.34, 0.58) - state.time * 0.004);
+          state.spawnTimer = state.time < 10 ? rand(0.48, 0.78) : Math.max(0.16, rand(0.34, 0.58) - state.time * 0.004);
         }
 
-        if (state.waveTimer <= 0) {
+        if (state.waveTimer <= 0 && state.time >= 10) {
           if (Math.random() > 0.52) {
             spawnLine("core", 5, 0);
           } else {
@@ -1227,11 +1352,12 @@
         if (right) targetSpeed += 1;
         if (state.pointerX !== null) {
           const distance = state.pointerX - player.x;
-          targetSpeed = clamp(distance / 86, -1, 1);
+          targetSpeed = clamp(distance / (state.perf.mobile ? 58 : 86), -1, 1);
         }
 
         const dashBoost = state.dashActive > 0 ? 1.75 : 1;
-        player.vx += (targetSpeed * 470 * dashBoost - player.vx) * Math.min(1, dt * 9.5);
+        const baseMove = state.perf.mobile ? 560 : 470;
+        player.vx += (targetSpeed * baseMove * dashBoost - player.vx) * Math.min(1, dt * (state.perf.mobile ? 13 : 9.5));
         player.x = clamp(player.x + player.vx * dt, 36, state.width - 36);
         player.lean += (clamp(player.vx / 520, -1, 1) - player.lean) * Math.min(1, dt * 8);
         player.trail.push({ x: player.x, y: player.y + 20, life: 0.28, size: state.dashActive > 0 ? 18 : 9 });
@@ -1284,7 +1410,9 @@
           if ((object.type === "meteor" || object.type === "shard") && !object.nearMissed && dy > 8 && Math.abs(dx) < object.radius + 28 && Math.abs(dy) < 74) {
             object.nearMissed = true;
             state.score += 18 * state.multiplier;
+            state.nearMisses += 1;
             state.combo += 1;
+            state.maxCombo = Math.max(state.maxCombo, state.combo);
             state.comboTimer = 2.5;
             state.multiplier = 1 + Math.min(3, state.combo * 0.07);
             addFloater("Near +18", object.x, object.y, "#7dc8ff");
@@ -1759,15 +1887,22 @@
 
       canvas.addEventListener("pointerdown", (event) => {
         if (!state.playing || state.paused) return;
+        event.preventDefault();
         state.pointerX = event.clientX;
+        canvas.setPointerCapture?.(event.pointerId);
+        if (state.time < 8) setCoach("很好，跟着星核走。能量满时点闪电冲刺。", 2.2);
       });
       canvas.addEventListener("pointermove", (event) => {
+        event.preventDefault();
         if (state.pointerX !== null) state.pointerX = event.clientX;
       });
-      canvas.addEventListener("pointerup", () => {
+      canvas.addEventListener("pointerup", (event) => {
+        event.preventDefault();
         state.pointerX = null;
+        canvas.releasePointerCapture?.(event.pointerId);
       });
-      canvas.addEventListener("pointercancel", () => {
+      canvas.addEventListener("pointercancel", (event) => {
+        event.preventDefault();
         state.pointerX = null;
       });
 
@@ -1811,3 +1946,5 @@
   </script>
 </body>
 </html>
+
+
