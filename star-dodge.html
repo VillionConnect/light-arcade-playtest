@@ -379,6 +379,23 @@
       display: none;
     }
 
+    body.low-power .stat,
+    body.low-power .meter-panel,
+    body.low-power .icon-button,
+    body.low-power .touch-button,
+    body.low-power .dialog {
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+      backdrop-filter: none;
+    }
+
+    body.low-power .mark {
+      animation: none;
+    }
+
+    body.low-power .dash-bar.ready span {
+      animation: none;
+    }
+
     @media (max-width: 640px) {
       .hud {
         gap: 8px;
@@ -637,6 +654,18 @@
         shockwaves: [],
         stars: [],
         nebulae: [],
+        perf: {
+          mobile: false,
+          lowPower: false,
+          maxParticles: 140,
+          maxTrail: 7,
+          starDensity: 7600,
+          nebulaCount: 5,
+          drawNebulaEveryFrame: true,
+          drawObjectTrails: true,
+          drawPlayerGlow: true,
+          targetDpr: 2,
+        },
         keys: new Set(),
         pointerX: null,
         muted: storage.get("starDodgeMuted", "0") === "1",
@@ -652,6 +681,7 @@
       };
 
       let audioCtx = null;
+      let music = null;
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
@@ -674,6 +704,23 @@
         if (score >= 2800) return "A";
         if (score >= 1500) return "B";
         return "C";
+      }
+
+      function configurePerformance() {
+        const coarsePointer = matchMedia("(pointer: coarse)").matches;
+        const narrow = Math.min(window.innerWidth, window.innerHeight) < 760;
+        const memory = navigator.deviceMemory || 4;
+        state.perf.mobile = coarsePointer || narrow;
+        state.perf.lowPower = state.perf.mobile || memory <= 4;
+        state.perf.targetDpr = state.perf.lowPower ? Math.min(window.devicePixelRatio || 1, 1.35) : Math.min(window.devicePixelRatio || 1, 2);
+        state.perf.starDensity = state.perf.lowPower ? 15000 : 7600;
+        state.perf.nebulaCount = state.perf.lowPower ? 2 : 5;
+        state.perf.maxParticles = state.perf.lowPower ? 72 : 140;
+        state.perf.maxTrail = state.perf.lowPower ? 3 : 7;
+        state.perf.drawNebulaEveryFrame = !state.perf.lowPower;
+        state.perf.drawObjectTrails = !state.perf.lowPower;
+        state.perf.drawPlayerGlow = !state.perf.lowPower;
+        document.body.classList.toggle("low-power", state.perf.lowPower);
       }
 
       function ensureAudio() {
@@ -723,6 +770,130 @@
         }
       }
 
+      function scheduleMusic(ac, startAt) {
+        const master = ac.createGain();
+        const filter = ac.createBiquadFilter();
+        const delay = ac.createDelay(0.45);
+        const feedback = ac.createGain();
+        const wet = ac.createGain();
+        const bassNotes = [110, 110, 146.83, 130.81, 98, 98, 130.81, 146.83];
+        const leadNotes = [440, 523.25, 659.25, 587.33, 523.25, 440, 392, 329.63];
+        const step = 0.24;
+
+        master.gain.value = 0.055;
+        filter.type = "lowpass";
+        filter.frequency.value = 1600;
+        filter.Q.value = 0.7;
+        delay.delayTime.value = 0.18;
+        feedback.gain.value = 0.28;
+        wet.gain.value = 0.15;
+
+        master.connect(filter).connect(ac.destination);
+        master.connect(delay).connect(wet).connect(ac.destination);
+        delay.connect(feedback).connect(delay);
+
+        for (let i = 0; i < 32; i += 1) {
+          const t = startAt + i * step;
+          const bass = ac.createOscillator();
+          const bassAmp = ac.createGain();
+          bass.type = "triangle";
+          bass.frequency.value = bassNotes[i % bassNotes.length];
+          bassAmp.gain.setValueAtTime(0.0001, t);
+          bassAmp.gain.exponentialRampToValueAtTime(i % 2 === 0 ? 0.16 : 0.09, t + 0.015);
+          bassAmp.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.82);
+          bass.connect(bassAmp).connect(master);
+          bass.start(t);
+          bass.stop(t + step);
+
+          if (i % 2 === 0) {
+            const lead = ac.createOscillator();
+            const leadAmp = ac.createGain();
+            lead.type = "square";
+            lead.frequency.value = leadNotes[(i / 2) % leadNotes.length];
+            leadAmp.gain.setValueAtTime(0.0001, t + 0.04);
+            leadAmp.gain.exponentialRampToValueAtTime(0.045, t + 0.06);
+            leadAmp.gain.exponentialRampToValueAtTime(0.0001, t + step * 1.4);
+            lead.connect(leadAmp).connect(master);
+            lead.start(t + 0.04);
+            lead.stop(t + step * 1.5);
+          }
+
+          if (i % 4 === 2) {
+            const noiseBuffer = ac.createBuffer(1, ac.sampleRate * 0.045, ac.sampleRate);
+            const data = noiseBuffer.getChannelData(0);
+            for (let j = 0; j < data.length; j += 1) data[j] = Math.random() * 2 - 1;
+            const noise = ac.createBufferSource();
+            const noiseAmp = ac.createGain();
+            const noiseFilter = ac.createBiquadFilter();
+            noise.buffer = noiseBuffer;
+            noiseFilter.type = "highpass";
+            noiseFilter.frequency.value = 4200;
+            noiseAmp.gain.setValueAtTime(0.0001, t);
+            noiseAmp.gain.exponentialRampToValueAtTime(0.026, t + 0.008);
+            noiseAmp.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+            noise.connect(noiseFilter).connect(noiseAmp).connect(master);
+            noise.start(t);
+            noise.stop(t + 0.05);
+          }
+        }
+
+        return {
+          master,
+          stopAt: startAt + 32 * step,
+        };
+      }
+
+      function startMusic() {
+        if (state.muted || music) return;
+        const ac = ensureAudio();
+        if (!ac) return;
+        const loop = () => {
+          if (!music || state.muted) return;
+          const now = ac.currentTime;
+          if (music.nextAt - now < 1.2) {
+            const scheduled = scheduleMusic(ac, music.nextAt);
+            music.nodes.push(scheduled);
+            music.nextAt = scheduled.stopAt;
+            music.nodes = music.nodes.filter((entry) => {
+              if (entry.stopAt + 1.5 > now) return true;
+              try {
+                entry.master.disconnect();
+              } catch (_) {
+                // The node may already be disconnected.
+              }
+              return false;
+            });
+          }
+          music.timer = setTimeout(loop, 600);
+        };
+        music = {
+          nextAt: ac.currentTime + 0.05,
+          timer: null,
+          nodes: [],
+        };
+        loop();
+      }
+
+      function stopMusic() {
+        if (!music) return;
+        clearTimeout(music.timer);
+        for (const entry of music.nodes) {
+          try {
+            entry.master.gain.exponentialRampToValueAtTime(0.0001, (audioCtx?.currentTime || 0) + 0.08);
+            setTimeout(() => {
+              try {
+                entry.master.disconnect();
+              } catch (_) {
+                // The node may already be disconnected.
+              }
+            }, 140);
+          } catch (_) {
+            // Audio nodes may already be stopped.
+          }
+        }
+        music = null;
+      }
+
       function updateSoundIcon() {
         soundIcon.innerHTML = state.muted
           ? '<path d="M11 5 6 9H3v6h3l5 4Z"></path><path d="m17 9 4 6"></path><path d="m21 9-4 6"></path>'
@@ -730,7 +901,8 @@
       }
 
       function resize() {
-        state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        configurePerformance();
+        state.dpr = state.perf.targetDpr;
         state.width = window.innerWidth;
         state.height = window.innerHeight;
         canvas.width = Math.floor(state.width * state.dpr);
@@ -742,7 +914,7 @@
       }
 
       function seedSpace() {
-        const count = clamp(Math.round((state.width * state.height) / 7600), 70, 240);
+        const count = clamp(Math.round((state.width * state.height) / state.perf.starDensity), state.perf.lowPower ? 34 : 70, state.perf.lowPower ? 90 : 240);
         state.stars = Array.from({ length: count }, () => ({
           x: Math.random() * state.width,
           y: Math.random() * state.height,
@@ -752,8 +924,8 @@
           twinkle: rand(0.8, 2.5),
           color: pick(["#f8fbff", "#7dc8ff", "#79ffd7", "#ffd166"]),
         }));
-        state.nebulae = Array.from({ length: 5 }, (_, index) => ({
-          x: (index / 4) * state.width + rand(-80, 80),
+        state.nebulae = Array.from({ length: state.perf.nebulaCount }, (_, index) => ({
+          x: (index / Math.max(1, state.perf.nebulaCount - 1)) * state.width + rand(-80, 80),
           y: rand(80, state.height * 0.75),
           r: rand(140, 340),
           color: pick(["rgba(125,200,255,0.15)", "rgba(255,107,139,0.13)", "rgba(121,255,215,0.11)", "rgba(255,209,102,0.1)"]),
@@ -794,6 +966,7 @@
 
       function reset() {
         playSound("start");
+        startMusic();
         state.playing = true;
         state.paused = false;
         state.ended = false;
@@ -830,10 +1003,12 @@
         if (!state.playing || state.ended) return;
         state.paused = paused;
         if (paused) {
+          stopMusic();
           showOverlay("星潮静止", "引擎保持待命。", "继续", false);
         } else {
           overlay.classList.add("hidden");
           state.lastTime = performance.now();
+          startMusic();
         }
       }
 
@@ -843,6 +1018,7 @@
         state.best = Math.max(state.best, Math.floor(state.score));
         storage.set("starDodgeBestV2", String(state.best));
         playSound("hit");
+        stopMusic();
         updateHud();
         showOverlay("航线中断", `抵达第 ${String(state.sector).padStart(2, "0")} 星域`, "再来一局", true);
       }
@@ -860,7 +1036,10 @@
       }
 
       function addParticles(x, y, color, count, force, spread = Math.PI * 2) {
-        for (let i = 0; i < count; i += 1) {
+        const budget = state.perf.maxParticles - state.particles.length;
+        if (budget <= 0) return;
+        const actualCount = Math.min(state.perf.lowPower ? Math.ceil(count * 0.45) : count, budget);
+        for (let i = 0; i < actualCount; i += 1) {
           const angle = -Math.PI / 2 + rand(-spread / 2, spread / 2);
           const speed = rand(force * 0.24, force);
           state.particles.push({
@@ -1055,6 +1234,7 @@
         player.x = clamp(player.x + player.vx * dt, 36, state.width - 36);
         player.lean += (clamp(player.vx / 520, -1, 1) - player.lean) * Math.min(1, dt * 8);
         player.trail.push({ x: player.x, y: player.y + 20, life: 0.28, size: state.dashActive > 0 ? 18 : 9 });
+        if (player.trail.length > state.perf.maxTrail) player.trail.splice(0, player.trail.length - state.perf.maxTrail);
         player.trail = player.trail.filter((point) => {
           point.life -= dt;
           point.y += 120 * dt;
@@ -1066,8 +1246,10 @@
           object.sway += dt * (2.1 + difficulty * 0.64);
           object.y += object.speed * dt;
           object.x += (Math.sin(object.sway) * 20 + object.drift) * dt;
-          object.trail.push({ x: object.x, y: object.y, life: 0.28 });
-          if (object.trail.length > 8) object.trail.shift();
+          if (state.perf.drawObjectTrails) {
+            object.trail.push({ x: object.x, y: object.y, life: 0.28 });
+            if (object.trail.length > state.perf.maxTrail) object.trail.shift();
+          }
         }
 
         for (const particle of state.particles) {
@@ -1125,16 +1307,29 @@
         ctx.fillRect(0, 0, state.width, state.height);
 
         ctx.save();
-        for (const cloud of state.nebulae) {
-          const x = (cloud.x + Math.sin(state.time * cloud.drift) * 40 + state.width) % state.width;
-          const y = cloud.y + Math.cos(state.time * cloud.drift * 0.8) * 26;
-          const glow = ctx.createRadialGradient(x, y, 0, x, y, cloud.r);
-          glow.addColorStop(0, cloud.color);
-          glow.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = glow;
+        if (state.perf.drawNebulaEveryFrame) {
+          for (const cloud of state.nebulae) {
+            const x = (cloud.x + Math.sin(state.time * cloud.drift) * 40 + state.width) % state.width;
+            const y = cloud.y + Math.cos(state.time * cloud.drift * 0.8) * 26;
+            const glow = ctx.createRadialGradient(x, y, 0, x, y, cloud.r);
+            glow.addColorStop(0, cloud.color);
+            glow.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(x, y, cloud.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          ctx.globalAlpha = 0.2;
+          ctx.fillStyle = "rgba(121, 255, 215, 0.12)";
           ctx.beginPath();
-          ctx.arc(x, y, cloud.r, 0, Math.PI * 2);
+          ctx.ellipse(state.width * 0.22, state.height * 0.2, state.width * 0.26, state.height * 0.14, -0.2, 0, Math.PI * 2);
           ctx.fill();
+          ctx.fillStyle = "rgba(255, 107, 139, 0.1)";
+          ctx.beginPath();
+          ctx.ellipse(state.width * 0.78, state.height * 0.28, state.width * 0.28, state.height * 0.16, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
         }
 
         ctx.globalCompositeOperation = "screen";
@@ -1204,6 +1399,7 @@
       }
 
       function drawObjectTrail(object, color) {
+        if (!state.perf.drawObjectTrails) return;
         if (!object.trail.length) return;
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
@@ -1264,8 +1460,10 @@
         ctx.save();
         ctx.translate(object.x, object.y);
         ctx.rotate(object.angle);
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = object.color;
+        if (!state.perf.lowPower) {
+          ctx.shadowBlur = 16;
+          ctx.shadowColor = object.color;
+        }
         const gem = ctx.createLinearGradient(-object.radius, -object.radius, object.radius, object.radius);
         gem.addColorStop(0, "#f8fbff");
         gem.addColorStop(0.38, object.color);
@@ -1297,8 +1495,10 @@
         ctx.save();
         ctx.translate(object.x, object.y);
         ctx.rotate(object.angle);
-        ctx.shadowBlur = 24;
-        ctx.shadowColor = "#ffd166";
+        if (!state.perf.lowPower) {
+          ctx.shadowBlur = 24;
+          ctx.shadowColor = "#ffd166";
+        }
         drawStar(0, 0, 5, object.radius, object.radius * 0.43, "#ffd166");
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 0.9;
@@ -1315,8 +1515,10 @@
         ctx.strokeStyle = "#79ffd7";
         ctx.fillStyle = "rgba(121, 255, 215, 0.17)";
         ctx.lineWidth = 3;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = "#79ffd7";
+        if (!state.perf.lowPower) {
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = "#79ffd7";
+        }
         ctx.beginPath();
         ctx.moveTo(0, -object.radius);
         ctx.lineTo(object.radius * 0.86, -object.radius * 0.36);
@@ -1329,6 +1531,7 @@
       }
 
       function drawPlayerTrail() {
+        if (!state.perf.drawPlayerGlow) return;
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
         for (const point of player.trail) {
@@ -1356,8 +1559,10 @@
           ctx.globalAlpha = alpha;
           ctx.strokeStyle = state.dashActive > 0 ? "#7dc8ff" : "#79ffd7";
           ctx.lineWidth = state.dashActive > 0 ? 4 : 3;
-          ctx.shadowBlur = 24;
-          ctx.shadowColor = ctx.strokeStyle;
+          if (!state.perf.lowPower) {
+            ctx.shadowBlur = 24;
+            ctx.shadowColor = ctx.strokeStyle;
+          }
           ctx.beginPath();
           ctx.arc(0, 0, player.radius * (state.dashActive > 0 ? 1.58 : 1.34), 0, Math.PI * 2);
           ctx.stroke();
@@ -1399,8 +1604,10 @@
         body.addColorStop(0.42, "#79ffd7");
         body.addColorStop(1, "#7dc8ff");
         ctx.fillStyle = body;
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = "rgba(121,255,215,0.35)";
+        if (!state.perf.lowPower) {
+          ctx.shadowBlur = 16;
+          ctx.shadowColor = "rgba(121,255,215,0.35)";
+        }
         ctx.beginPath();
         ctx.moveTo(0, -34);
         ctx.bezierCurveTo(17, -12, 22, 7, 17, 20);
@@ -1571,7 +1778,12 @@
         state.muted = !state.muted;
         storage.set("starDodgeMuted", state.muted ? "1" : "0");
         updateSoundIcon();
-        if (!state.muted) playSound("collect");
+        if (state.muted) {
+          stopMusic();
+        } else {
+          playSound("collect");
+          if (state.playing && !state.paused && !state.ended) startMusic();
+        }
       });
       pauseButton.addEventListener("click", () => setPause(!state.paused));
       restartButton.addEventListener("click", reset);

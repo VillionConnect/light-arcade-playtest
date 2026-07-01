@@ -9,6 +9,8 @@
 - 本地入口：`index.html`
 - 游戏入口：`star-dodge.html`
 - 游戏清单：`data/games.json`
+- 朋友试玩地址：https://villionconnect.github.io/light-arcade-playtest/
+- GitHub 仓库：https://github.com/VillionConnect/light-arcade-playtest
 
 ## 已完成
 
@@ -21,6 +23,7 @@
 - 基础维护文档和分享包。
 - 大陆商业化运营路线图。
 - 广告配置占位文件：`data/ad-config.json`。
+- 已发布 GitHub Pages 试玩站。
 
 ## 待办优先级
 
