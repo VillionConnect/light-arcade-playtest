@@ -1,0 +1,1600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>星轨闪避</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      --ink: #f8fbff;
+      --muted: #b7c3d9;
+      --panel: rgba(9, 14, 27, 0.7);
+      --panel-strong: rgba(10, 17, 31, 0.88);
+      --line: rgba(255, 255, 255, 0.16);
+      --mint: #79ffd7;
+      --gold: #ffd166;
+      --rose: #ff6b8b;
+      --sky: #7dc8ff;
+      --violet: #b69cff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(39, 132, 152, 0.34), transparent 27%),
+        radial-gradient(circle at 82% 12%, rgba(173, 96, 121, 0.26), transparent 31%),
+        linear-gradient(158deg, #07101e 0%, #15101d 49%, #071f23 100%);
+      color: var(--ink);
+      touch-action: none;
+      user-select: none;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      border: 0;
+    }
+
+    .game-shell {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      min-width: 280px;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .hud {
+      position: relative;
+      z-index: 4;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
+      pointer-events: none;
+    }
+
+    .hud-stack {
+      display: grid;
+      gap: 8px;
+      max-width: min(620px, calc(100vw - 164px));
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: minmax(86px, 1.35fr) repeat(3, minmax(58px, 0.85fr));
+      gap: 8px;
+    }
+
+    .stat,
+    .meter-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.26);
+      backdrop-filter: blur(18px);
+    }
+
+    .stat {
+      min-height: 56px;
+      padding: 8px 10px;
+    }
+
+    .stat small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 5px;
+      font-size: clamp(18px, 4.2vw, 30px);
+      line-height: 1;
+      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .meter-panel {
+      display: grid;
+      grid-template-columns: auto minmax(86px, 1fr);
+      align-items: center;
+      gap: 12px;
+      min-height: 42px;
+      padding: 8px 10px;
+    }
+
+    .life-row {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .life {
+      width: 15px;
+      height: 15px;
+      border-radius: 4px;
+      background: linear-gradient(145deg, var(--rose), #ffc56f);
+      box-shadow: 0 0 14px rgba(255, 107, 139, 0.55);
+      transform: rotate(45deg);
+    }
+
+    .life.empty {
+      background: rgba(255, 255, 255, 0.15);
+      box-shadow: none;
+    }
+
+    .dash-bar {
+      position: relative;
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .dash-bar span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--sky), var(--mint), var(--gold));
+      box-shadow: 0 0 18px rgba(121, 255, 215, 0.46);
+      transition: width 110ms linear;
+    }
+
+    .dash-bar.ready span {
+      animation: pulseBar 1.1s ease-in-out infinite;
+    }
+
+    @keyframes pulseBar {
+      0%,
+      100% {
+        filter: brightness(1);
+      }
+
+      50% {
+        filter: brightness(1.35);
+      }
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .icon-button,
+    .touch-button,
+    .start-button {
+      cursor: pointer;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, filter 140ms ease;
+    }
+
+    .icon-button {
+      width: 44px;
+      height: 44px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(9, 15, 28, 0.7);
+      box-shadow: 0 16px 34px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(16px);
+    }
+
+    .icon-button:hover,
+    .touch-button:hover {
+      background: rgba(37, 54, 82, 0.86);
+      border-color: rgba(255, 255, 255, 0.28);
+      transform: translateY(-1px);
+    }
+
+    .icon-button:active,
+    .touch-button:active,
+    .start-button:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    .icon-button svg,
+    .touch-button svg {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at center, rgba(19, 31, 49, 0.42), rgba(5, 8, 16, 0.74)),
+        rgba(5, 8, 16, 0.38);
+      backdrop-filter: blur(11px);
+    }
+
+    .dialog {
+      width: min(430px, 100%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+      padding: 22px;
+      text-align: center;
+    }
+
+    .mark {
+      width: 104px;
+      aspect-ratio: 1;
+      margin: 0 auto 14px;
+      display: grid;
+      place-items: center;
+      animation: hoverMark 3.2s ease-in-out infinite;
+    }
+
+    .mark svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 0 22px rgba(121, 255, 215, 0.44));
+    }
+
+    @keyframes hoverMark {
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-6px);
+      }
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 9vw, 58px);
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    .dialog p {
+      margin: 12px auto 18px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      max-width: 25em;
+    }
+
+    .result-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 16px 0 18px;
+    }
+
+    .result-item {
+      min-height: 56px;
+      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .result-item small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.1;
+    }
+
+    .result-item strong {
+      display: block;
+      margin-top: 5px;
+      font-size: clamp(17px, 4.8vw, 24px);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .start-button {
+      min-width: 158px;
+      height: 48px;
+      padding: 0 24px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #2bd4c7, #ffd166);
+      color: #07101e;
+      font-weight: 850;
+      box-shadow: 0 14px 34px rgba(43, 212, 199, 0.3);
+    }
+
+    .start-button:hover {
+      filter: brightness(1.07);
+      transform: translateY(-1px);
+    }
+
+    .touch-controls {
+      position: absolute;
+      z-index: 4;
+      left: max(14px, env(safe-area-inset-left));
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .touch-group {
+      display: flex;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .touch-button {
+      width: clamp(56px, 15vw, 74px);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(10, 17, 31, 0.62);
+      color: var(--ink);
+      box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(14px);
+    }
+
+    .touch-button.is-down,
+    .touch-button.is-ready {
+      background: rgba(125, 200, 255, 0.24);
+      border-color: rgba(121, 255, 215, 0.42);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .hud {
+        gap: 8px;
+      }
+
+      .hud-stack {
+        max-width: calc(100vw - 112px);
+      }
+
+      .stats {
+        grid-template-columns: repeat(4, minmax(45px, 1fr));
+        gap: 6px;
+      }
+
+      .stat {
+        min-height: 48px;
+        padding: 7px 7px;
+      }
+
+      .stat small,
+      .result-item small {
+        font-size: 10px;
+      }
+
+      .stat strong {
+        font-size: clamp(15px, 4.8vw, 21px);
+      }
+
+      .meter-panel {
+        min-height: 38px;
+        gap: 8px;
+        padding: 7px;
+      }
+
+      .life {
+        width: 13px;
+        height: 13px;
+      }
+
+      .actions {
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .icon-button {
+        width: 40px;
+        height: 40px;
+      }
+
+      .dialog {
+        padding: 18px;
+      }
+
+      .mark {
+        width: 88px;
+      }
+    }
+
+    @media (max-height: 560px) {
+      .touch-controls {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="game-shell" aria-label="星轨闪避">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <header class="hud" aria-live="polite">
+      <div class="hud-stack">
+        <div class="stats">
+          <div class="stat">
+            <small>分数</small>
+            <strong id="score">0</strong>
+          </div>
+          <div class="stat">
+            <small>最高</small>
+            <strong id="best">0</strong>
+          </div>
+          <div class="stat">
+            <small>连击</small>
+            <strong id="combo">x1.0</strong>
+          </div>
+          <div class="stat">
+            <small>星域</small>
+            <strong id="sector">01</strong>
+          </div>
+        </div>
+        <div class="meter-panel">
+          <div class="life-row" id="lives"></div>
+          <div class="dash-bar" id="dashBar"><span id="dashFill"></span></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="icon-button" id="soundButton" type="button" aria-label="声音">
+          <svg id="soundIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M11 5 6 9H3v6h3l5 4Z"></path>
+            <path d="M16 9.5a4 4 0 0 1 0 5"></path>
+            <path d="M19 7a8 8 0 0 1 0 10"></path>
+          </svg>
+        </button>
+        <button class="icon-button" id="pauseButton" type="button" aria-label="暂停">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 5v14"></path>
+            <path d="M15 5v14"></path>
+          </svg>
+        </button>
+        <button class="icon-button" id="restartButton" type="button" aria-label="重开">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 11a8 8 0 1 1-2.34-5.66"></path>
+            <path d="M20 4v7h-7"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="overlay" id="overlay">
+      <div class="dialog">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 140 140">
+            <defs>
+              <linearGradient id="shipPaint" x1="23" x2="113" y1="118" y2="18" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7dc8ff"></stop>
+                <stop offset="0.48" stop-color="#79ffd7"></stop>
+                <stop offset="1" stop-color="#ffd166"></stop>
+              </linearGradient>
+              <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+                <stop stop-color="#79ffd7" stop-opacity="0.48"></stop>
+                <stop offset="1" stop-color="#79ffd7" stop-opacity="0"></stop>
+              </radialGradient>
+            </defs>
+            <circle cx="70" cy="70" r="60" fill="url(#aura)"></circle>
+            <path d="M70 10 96 84 70 70 44 84Z" fill="url(#shipPaint)"></path>
+            <path d="M70 70 84 126 70 111 56 126Z" fill="#ff6b8b"></path>
+            <path d="M50 86 20 105 38 66Z" fill="#7dc8ff" opacity="0.9"></path>
+            <path d="M90 86 120 105 102 66Z" fill="#ffd166" opacity="0.9"></path>
+            <ellipse cx="70" cy="51" rx="9" ry="13" fill="#07101e" opacity="0.72"></ellipse>
+          </svg>
+        </div>
+        <h1 id="overlayTitle">星轨闪避</h1>
+        <p id="overlayText">穿过星潮，夺回星核。</p>
+        <div class="result-row" id="resultRow">
+          <div class="result-item">
+            <small>本局</small>
+            <strong id="resultScore">0</strong>
+          </div>
+          <div class="result-item">
+            <small>最高</small>
+            <strong id="resultBest">0</strong>
+          </div>
+          <div class="result-item">
+            <small>评级</small>
+            <strong id="resultRank">C</strong>
+          </div>
+        </div>
+        <button class="start-button" id="startButton" type="button">开始</button>
+      </div>
+    </section>
+
+    <nav class="touch-controls" aria-label="移动">
+      <div class="touch-group">
+        <button class="touch-button" id="leftButton" type="button" aria-label="左">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m15 18-6-6 6-6"></path>
+          </svg>
+        </button>
+        <button class="touch-button" id="rightButton" type="button" aria-label="右">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m9 18 6-6-6-6"></path>
+          </svg>
+        </button>
+      </div>
+      <button class="touch-button" id="dashButton" type="button" aria-label="冲刺">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m13 2-8 12h7l-1 8 8-12h-7z"></path>
+        </svg>
+      </button>
+    </nav>
+  </main>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const scoreEl = document.getElementById("score");
+      const bestEl = document.getElementById("best");
+      const comboEl = document.getElementById("combo");
+      const sectorEl = document.getElementById("sector");
+      const livesEl = document.getElementById("lives");
+      const dashBar = document.getElementById("dashBar");
+      const dashFill = document.getElementById("dashFill");
+      const overlay = document.getElementById("overlay");
+      const overlayTitle = document.getElementById("overlayTitle");
+      const overlayText = document.getElementById("overlayText");
+      const resultRow = document.getElementById("resultRow");
+      const resultScore = document.getElementById("resultScore");
+      const resultBest = document.getElementById("resultBest");
+      const resultRank = document.getElementById("resultRank");
+      const startButton = document.getElementById("startButton");
+      const soundButton = document.getElementById("soundButton");
+      const soundIcon = document.getElementById("soundIcon");
+      const pauseButton = document.getElementById("pauseButton");
+      const restartButton = document.getElementById("restartButton");
+      const leftButton = document.getElementById("leftButton");
+      const rightButton = document.getElementById("rightButton");
+      const dashButton = document.getElementById("dashButton");
+
+      const storage = {
+        get(key, fallback) {
+          try {
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : value;
+          } catch (_) {
+            return fallback;
+          }
+        },
+        set(key, value) {
+          try {
+            localStorage.setItem(key, value);
+          } catch (_) {
+            return false;
+          }
+          return true;
+        },
+      };
+
+      const state = {
+        width: 0,
+        height: 0,
+        dpr: 1,
+        playing: false,
+        paused: false,
+        ended: false,
+        score: 0,
+        best: Number(storage.get("starDodgeBestV2", storage.get("starDodgeBest", 0)) || 0),
+        lives: 3,
+        maxLives: 3,
+        combo: 0,
+        comboTimer: 0,
+        multiplier: 1,
+        sector: 1,
+        time: 0,
+        scroll: 0,
+        spawnTimer: 0,
+        waveTimer: 3.4,
+        dashCharge: 1,
+        dashActive: 0,
+        invincible: 0,
+        shake: 0,
+        flash: 0,
+        objects: [],
+        particles: [],
+        floaters: [],
+        shockwaves: [],
+        stars: [],
+        nebulae: [],
+        keys: new Set(),
+        pointerX: null,
+        muted: storage.get("starDodgeMuted", "0") === "1",
+      };
+
+      const player = {
+        x: 0,
+        y: 0,
+        radius: 24,
+        vx: 0,
+        lean: 0,
+        trail: [],
+      };
+
+      let audioCtx = null;
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function rand(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      function pick(list) {
+        return list[Math.floor(Math.random() * list.length)];
+      }
+
+      function formatScore(value) {
+        return String(Math.max(0, Math.floor(value)));
+      }
+
+      function rankFor(score) {
+        if (score >= 4200) return "S";
+        if (score >= 2800) return "A";
+        if (score >= 1500) return "B";
+        return "C";
+      }
+
+      function ensureAudio() {
+        if (state.muted) return null;
+        if (!audioCtx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return null;
+          audioCtx = new AudioContext();
+        }
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        return audioCtx;
+      }
+
+      function tone(freq, duration, type = "sine", gain = 0.045, glide = 1) {
+        const ac = ensureAudio();
+        if (!ac) return;
+        const osc = ac.createOscillator();
+        const amp = ac.createGain();
+        const now = ac.currentTime;
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq * glide), now + duration);
+        amp.gain.setValueAtTime(0.0001, now);
+        amp.gain.exponentialRampToValueAtTime(gain, now + 0.015);
+        amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        osc.connect(amp).connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+      }
+
+      function playSound(name) {
+        if (state.muted) return;
+        if (name === "collect") {
+          tone(720, 0.09, "triangle", 0.035, 1.35);
+          setTimeout(() => tone(980, 0.08, "triangle", 0.025, 1.12), 35);
+        } else if (name === "hit") {
+          tone(190, 0.18, "sawtooth", 0.055, 0.52);
+        } else if (name === "dash") {
+          tone(320, 0.2, "square", 0.028, 2.8);
+          tone(82, 0.24, "sine", 0.032, 0.78);
+        } else if (name === "shield") {
+          tone(520, 0.1, "sine", 0.03, 1.5);
+          setTimeout(() => tone(860, 0.14, "sine", 0.03, 1.18), 45);
+        } else if (name === "start") {
+          tone(440, 0.08, "triangle", 0.035, 1.45);
+          setTimeout(() => tone(660, 0.1, "triangle", 0.035, 1.18), 55);
+        }
+      }
+
+      function updateSoundIcon() {
+        soundIcon.innerHTML = state.muted
+          ? '<path d="M11 5 6 9H3v6h3l5 4Z"></path><path d="m17 9 4 6"></path><path d="m21 9-4 6"></path>'
+          : '<path d="M11 5 6 9H3v6h3l5 4Z"></path><path d="M16 9.5a4 4 0 0 1 0 5"></path><path d="M19 7a8 8 0 0 1 0 10"></path>';
+      }
+
+      function resize() {
+        state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        state.width = window.innerWidth;
+        state.height = window.innerHeight;
+        canvas.width = Math.floor(state.width * state.dpr);
+        canvas.height = Math.floor(state.height * state.dpr);
+        ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+        player.y = state.height - clamp(state.height * 0.16, 88, 140);
+        player.x = clamp(player.x || state.width / 2, 42, state.width - 42);
+        seedSpace();
+      }
+
+      function seedSpace() {
+        const count = clamp(Math.round((state.width * state.height) / 7600), 70, 240);
+        state.stars = Array.from({ length: count }, () => ({
+          x: Math.random() * state.width,
+          y: Math.random() * state.height,
+          r: rand(0.55, 2.3),
+          depth: rand(0.35, 1.45),
+          alpha: rand(0.28, 0.94),
+          twinkle: rand(0.8, 2.5),
+          color: pick(["#f8fbff", "#7dc8ff", "#79ffd7", "#ffd166"]),
+        }));
+        state.nebulae = Array.from({ length: 5 }, (_, index) => ({
+          x: (index / 4) * state.width + rand(-80, 80),
+          y: rand(80, state.height * 0.75),
+          r: rand(140, 340),
+          color: pick(["rgba(125,200,255,0.15)", "rgba(255,107,139,0.13)", "rgba(121,255,215,0.11)", "rgba(255,209,102,0.1)"]),
+          drift: rand(0.15, 0.42),
+        }));
+      }
+
+      function updateHud() {
+        const score = Math.floor(state.score);
+        state.best = Math.max(state.best, score);
+        scoreEl.textContent = formatScore(state.score);
+        bestEl.textContent = formatScore(state.best);
+        comboEl.textContent = `x${state.multiplier.toFixed(1)}`;
+        sectorEl.textContent = String(state.sector).padStart(2, "0");
+        dashFill.style.width = `${Math.round(state.dashCharge * 100)}%`;
+        dashBar.classList.toggle("ready", state.dashCharge >= 1);
+        dashButton.classList.toggle("is-ready", state.dashCharge >= 1);
+        livesEl.innerHTML = "";
+        for (let i = 0; i < state.maxLives; i += 1) {
+          const life = document.createElement("span");
+          life.className = `life${i >= state.lives ? " empty" : ""}`;
+          livesEl.appendChild(life);
+        }
+      }
+
+      function showOverlay(title, text, label, showResults = false) {
+        overlayTitle.textContent = title;
+        overlayText.textContent = text;
+        startButton.textContent = label;
+        resultRow.classList.toggle("hidden", !showResults);
+        if (showResults) {
+          resultScore.textContent = formatScore(state.score);
+          resultBest.textContent = formatScore(state.best);
+          resultRank.textContent = rankFor(state.score);
+        }
+        overlay.classList.remove("hidden");
+      }
+
+      function reset() {
+        playSound("start");
+        state.playing = true;
+        state.paused = false;
+        state.ended = false;
+        state.score = 0;
+        state.lives = state.maxLives;
+        state.combo = 0;
+        state.comboTimer = 0;
+        state.multiplier = 1;
+        state.sector = 1;
+        state.time = 0;
+        state.scroll = 0;
+        state.spawnTimer = 0.22;
+        state.waveTimer = 1.8;
+        state.dashCharge = 1;
+        state.dashActive = 0;
+        state.invincible = 1.2;
+        state.shake = 0;
+        state.flash = 0;
+        state.objects = [];
+        state.particles = [];
+        state.floaters = [];
+        state.shockwaves = [];
+        state.keys.clear();
+        state.pointerX = null;
+        player.x = state.width / 2;
+        player.vx = 0;
+        player.lean = 0;
+        player.trail = [];
+        overlay.classList.add("hidden");
+        updateHud();
+      }
+
+      function setPause(paused) {
+        if (!state.playing || state.ended) return;
+        state.paused = paused;
+        if (paused) {
+          showOverlay("星潮静止", "引擎保持待命。", "继续", false);
+        } else {
+          overlay.classList.add("hidden");
+          state.lastTime = performance.now();
+        }
+      }
+
+      function endGame() {
+        state.ended = true;
+        state.playing = false;
+        state.best = Math.max(state.best, Math.floor(state.score));
+        storage.set("starDodgeBestV2", String(state.best));
+        playSound("hit");
+        updateHud();
+        showOverlay("航线中断", `抵达第 ${String(state.sector).padStart(2, "0")} 星域`, "再来一局", true);
+      }
+
+      function addFloater(text, x, y, color = "#f8fbff") {
+        state.floaters.push({
+          text,
+          x,
+          y,
+          vy: -44,
+          life: 0.95,
+          maxLife: 0.95,
+          color,
+        });
+      }
+
+      function addParticles(x, y, color, count, force, spread = Math.PI * 2) {
+        for (let i = 0; i < count; i += 1) {
+          const angle = -Math.PI / 2 + rand(-spread / 2, spread / 2);
+          const speed = rand(force * 0.24, force);
+          state.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: rand(0.32, 0.82),
+            maxLife: 0.82,
+            r: rand(1.2, 4.2),
+            color,
+          });
+        }
+      }
+
+      function addShockwave(x, y, color = "#79ffd7", size = 128) {
+        state.shockwaves.push({
+          x,
+          y,
+          r: 16,
+          target: size,
+          life: 0.42,
+          maxLife: 0.42,
+          color,
+        });
+      }
+
+      function makeMeteorShape(points, radius) {
+        return Array.from({ length: points }, (_, index) => {
+          const a = (index / points) * Math.PI * 2;
+          return {
+            x: Math.cos(a) * radius * rand(0.72, 1.1),
+            y: Math.sin(a) * radius * rand(0.72, 1.08),
+          };
+        });
+      }
+
+      function makeObject(type, x = null, y = null) {
+        const difficulty = Math.min(2.45, 1.2 + state.time / 38);
+        const radius = type === "meteor" ? rand(22, 35) : type === "shard" ? rand(18, 28) : type === "shield" ? 20 : rand(15, 22);
+        return {
+          type,
+          x: x ?? rand(radius + 18, state.width - radius - 18),
+          y: y ?? -radius - rand(24, 90),
+          radius,
+          speed: (type === "meteor" ? rand(168, 286) : type === "shard" ? rand(198, 328) : rand(150, 246)) * difficulty,
+          drift: rand(-38, 38),
+          sway: rand(0, Math.PI * 2),
+          spin: rand(-2.2, 2.2),
+          angle: rand(0, Math.PI * 2),
+          trail: [],
+          nearMissed: false,
+          shape: type === "meteor" ? makeMeteorShape(10, radius) : null,
+          color: type === "shard" ? pick(["#b69cff", "#7dc8ff", "#ff6b8b"]) : "#ffd166",
+        };
+      }
+
+      function spawnLine(type, count, yOffset = 0) {
+        const spacing = state.width / (count + 1);
+        for (let i = 0; i < count; i += 1) {
+          state.objects.push(makeObject(type, spacing * (i + 1) + rand(-18, 18), -40 - yOffset - i * 18));
+        }
+      }
+
+      function spawnWave() {
+        const roll = Math.random();
+        if (state.lives < state.maxLives && roll > 0.91) {
+          state.objects.push(makeObject("shield"));
+          return;
+        }
+
+        if (roll < 0.18) {
+          state.objects.push(makeObject("core"));
+          if (state.time > 6 && Math.random() > 0.45) state.objects.push(makeObject("shard"));
+        } else if (roll < 0.4) {
+          spawnLine("core", Math.random() > 0.45 ? 4 : 5, rand(0, 30));
+        } else if (roll < 0.63) {
+          state.objects.push(makeObject("meteor"));
+          if (state.time > 10 && Math.random() > 0.48) state.objects.push(makeObject("core"));
+        } else {
+          state.objects.push(makeObject("shard"));
+          if (state.time > 8) state.objects.push(makeObject(Math.random() > 0.46 ? "meteor" : "core"));
+        }
+      }
+
+      function triggerDash() {
+        if (!state.playing || state.paused || state.ended || state.dashCharge < 1) return;
+        state.dashCharge = 0;
+        state.dashActive = 0.44;
+        state.invincible = Math.max(state.invincible, 0.56);
+        state.shake = Math.max(state.shake, 0.12);
+        state.flash = Math.max(state.flash, 0.12);
+        addShockwave(player.x, player.y, "#7dc8ff", 220);
+        addParticles(player.x, player.y + 16, "#7dc8ff", 34, 270, Math.PI * 1.25);
+        playSound("dash");
+        updateHud();
+      }
+
+      function collectObject(object) {
+        if (object.type === "core") {
+          state.combo += 1;
+          state.comboTimer = 3.1;
+          state.multiplier = 1 + Math.min(3, state.combo * 0.07);
+          const gain = Math.round(12 * state.multiplier + Math.min(state.combo, 16));
+          state.score += gain;
+          addFloater(`+${gain}`, object.x, object.y, "#ffd166");
+          addParticles(object.x, object.y, "#ffd166", 18, 180);
+          playSound("collect");
+        } else if (object.type === "shield") {
+          state.lives = Math.min(state.maxLives, state.lives + 1);
+          state.invincible = 1.5;
+          state.score += 35;
+          addFloater("+Shield", object.x, object.y, "#79ffd7");
+          addShockwave(object.x, object.y, "#79ffd7", 150);
+          addParticles(object.x, object.y, "#79ffd7", 26, 220);
+          playSound("shield");
+        } else if (state.dashActive > 0) {
+          const gain = object.type === "meteor" ? 45 : 32;
+          state.score += gain;
+          addFloater(`Break +${gain}`, object.x, object.y, "#7dc8ff");
+          addShockwave(object.x, object.y, "#7dc8ff", 130);
+          addParticles(object.x, object.y, object.type === "meteor" ? "#ffb06b" : object.color, 28, 240);
+        } else if (state.invincible <= 0) {
+          state.combo = 0;
+          state.comboTimer = 0;
+          state.multiplier = 1;
+          state.lives -= 1;
+          state.shake = 0.28;
+          state.flash = 0.2;
+          state.invincible = 1.35;
+          addFloater("-Energy", player.x, player.y - 34, "#ff6b8b");
+          addShockwave(player.x, player.y, "#ff6b8b", 190);
+          addParticles(player.x, player.y, "#ff6b8b", 34, 260);
+          playSound("hit");
+          if (state.lives <= 0) endGame();
+        }
+        updateHud();
+      }
+
+      function update(dt) {
+        if (!state.playing || state.paused) return;
+
+        const difficulty = Math.min(2.35, 1.18 + state.time / 42);
+        state.time += dt;
+        state.scroll += dt * (126 + difficulty * 72);
+        state.sector = 1 + Math.floor(state.score / 450);
+        state.spawnTimer -= dt;
+        state.waveTimer -= dt;
+        state.invincible = Math.max(0, state.invincible - dt);
+        state.dashActive = Math.max(0, state.dashActive - dt);
+        state.shake = Math.max(0, state.shake - dt);
+        state.flash = Math.max(0, state.flash - dt);
+        state.dashCharge = clamp(state.dashCharge + dt / 1.85, 0, 1);
+        state.score += dt * (8 + difficulty * 7) * state.multiplier;
+
+        if (state.comboTimer > 0) {
+          state.comboTimer -= dt;
+          if (state.comboTimer <= 0) {
+            state.combo = Math.max(0, Math.floor(state.combo * 0.45));
+            state.multiplier = 1 + Math.min(3, state.combo * 0.07);
+          }
+        }
+
+        if (state.spawnTimer <= 0) {
+          spawnWave();
+          state.spawnTimer = Math.max(0.16, rand(0.34, 0.58) - state.time * 0.004);
+        }
+
+        if (state.waveTimer <= 0) {
+          if (Math.random() > 0.52) {
+            spawnLine("core", 5, 0);
+          } else {
+            state.objects.push(makeObject("meteor", state.width * 0.28, -60));
+            state.objects.push(makeObject("meteor", state.width * 0.72, -130));
+            state.objects.push(makeObject("core", state.width * 0.5, -90));
+          }
+          state.waveTimer = rand(3.4, 5.2);
+        }
+
+        const left = state.keys.has("ArrowLeft") || state.keys.has("KeyA");
+        const right = state.keys.has("ArrowRight") || state.keys.has("KeyD");
+        let targetSpeed = 0;
+        if (left) targetSpeed -= 1;
+        if (right) targetSpeed += 1;
+        if (state.pointerX !== null) {
+          const distance = state.pointerX - player.x;
+          targetSpeed = clamp(distance / 86, -1, 1);
+        }
+
+        const dashBoost = state.dashActive > 0 ? 1.75 : 1;
+        player.vx += (targetSpeed * 470 * dashBoost - player.vx) * Math.min(1, dt * 9.5);
+        player.x = clamp(player.x + player.vx * dt, 36, state.width - 36);
+        player.lean += (clamp(player.vx / 520, -1, 1) - player.lean) * Math.min(1, dt * 8);
+        player.trail.push({ x: player.x, y: player.y + 20, life: 0.28, size: state.dashActive > 0 ? 18 : 9 });
+        player.trail = player.trail.filter((point) => {
+          point.life -= dt;
+          point.y += 120 * dt;
+          return point.life > 0;
+        });
+
+        for (const object of state.objects) {
+          object.angle += object.spin * dt;
+          object.sway += dt * (2.1 + difficulty * 0.64);
+          object.y += object.speed * dt;
+          object.x += (Math.sin(object.sway) * 20 + object.drift) * dt;
+          object.trail.push({ x: object.x, y: object.y, life: 0.28 });
+          if (object.trail.length > 8) object.trail.shift();
+        }
+
+        for (const particle of state.particles) {
+          particle.life -= dt;
+          particle.x += particle.vx * dt;
+          particle.y += particle.vy * dt;
+          particle.vy += 95 * dt;
+          particle.vx *= 1 - dt * 0.8;
+        }
+
+        for (const floater of state.floaters) {
+          floater.life -= dt;
+          floater.y += floater.vy * dt;
+          floater.vy += 18 * dt;
+        }
+
+        for (const wave of state.shockwaves) {
+          wave.life -= dt;
+          wave.r += (wave.target - wave.r) * Math.min(1, dt * 7);
+        }
+
+        state.objects = state.objects.filter((object) => {
+          const dx = object.x - player.x;
+          const dy = object.y - player.y;
+          const hitRadius = object.type === "core" || object.type === "shield" ? object.radius + 15 : object.radius + player.radius * 0.7;
+          const hit = Math.hypot(dx, dy) < hitRadius;
+          if (hit) {
+            collectObject(object);
+            return false;
+          }
+          if ((object.type === "meteor" || object.type === "shard") && !object.nearMissed && dy > 8 && Math.abs(dx) < object.radius + 28 && Math.abs(dy) < 74) {
+            object.nearMissed = true;
+            state.score += 18 * state.multiplier;
+            state.combo += 1;
+            state.comboTimer = 2.5;
+            state.multiplier = 1 + Math.min(3, state.combo * 0.07);
+            addFloater("Near +18", object.x, object.y, "#7dc8ff");
+            addParticles(player.x, player.y - 12, "#7dc8ff", 8, 110, Math.PI * 0.9);
+          }
+          return object.y < state.height + object.radius + 70 && object.x > -80 && object.x < state.width + 80;
+        });
+
+        state.particles = state.particles.filter((particle) => particle.life > 0);
+        state.floaters = state.floaters.filter((floater) => floater.life > 0);
+        state.shockwaves = state.shockwaves.filter((wave) => wave.life > 0);
+        updateHud();
+      }
+
+      function drawBackground(dt) {
+        const sky = ctx.createLinearGradient(0, 0, 0, state.height);
+        sky.addColorStop(0, "#07101e");
+        sky.addColorStop(0.46, "#15101d");
+        sky.addColorStop(1, "#071f23");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, state.width, state.height);
+
+        ctx.save();
+        for (const cloud of state.nebulae) {
+          const x = (cloud.x + Math.sin(state.time * cloud.drift) * 40 + state.width) % state.width;
+          const y = cloud.y + Math.cos(state.time * cloud.drift * 0.8) * 26;
+          const glow = ctx.createRadialGradient(x, y, 0, x, y, cloud.r);
+          glow.addColorStop(0, cloud.color);
+          glow.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(x, y, cloud.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.globalCompositeOperation = "screen";
+        for (const star of state.stars) {
+          star.y += (22 + star.depth * 64) * dt;
+          if (star.y > state.height + 8) {
+            star.y = -8;
+            star.x = Math.random() * state.width;
+          }
+          const twinkle = 0.74 + Math.sin(state.time * star.twinkle + star.x) * 0.26;
+          ctx.globalAlpha = star.alpha * twinkle;
+          ctx.fillStyle = star.color;
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.r * star.depth, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = "source-over";
+        ctx.restore();
+
+        drawCorridor();
+      }
+
+      function drawCorridor() {
+        const center = state.width / 2;
+        const horizon = state.height * 0.18;
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = "rgba(125, 200, 255, 0.38)";
+        ctx.lineWidth = 1;
+        for (let i = -3; i <= 3; i += 1) {
+          const bottomX = center + i * state.width * 0.18;
+          ctx.beginPath();
+          ctx.moveTo(center + i * 18, horizon);
+          ctx.quadraticCurveTo(center + i * state.width * 0.09, state.height * 0.55, bottomX, state.height + 30);
+          ctx.stroke();
+        }
+
+        const step = 72;
+        const offset = state.scroll % step;
+        for (let y = horizon + offset; y < state.height + step; y += step) {
+          const t = (y - horizon) / (state.height - horizon);
+          const half = state.width * (0.08 + t * 0.54);
+          ctx.globalAlpha = 0.16 * t;
+          ctx.beginPath();
+          ctx.moveTo(center - half, y);
+          ctx.lineTo(center + half, y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawStar(cx, cy, spikes, outer, inner, fill) {
+        let rotation = -Math.PI / 2;
+        ctx.beginPath();
+        for (let i = 0; i < spikes * 2; i += 1) {
+          const radius = i % 2 === 0 ? outer : inner;
+          const x = cx + Math.cos(rotation) * radius;
+          const y = cy + Math.sin(rotation) * radius;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+          rotation += Math.PI / spikes;
+        }
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
+
+      function drawObjectTrail(object, color) {
+        if (!object.trail.length) return;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        for (let i = 0; i < object.trail.length; i += 1) {
+          const point = object.trail[i];
+          const alpha = (i + 1) / object.trail.length;
+          ctx.globalAlpha = alpha * 0.12;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, object.radius * (0.35 + alpha * 0.25), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawMeteor(object) {
+        drawObjectTrail(object, "#ff8d6b");
+        ctx.save();
+        ctx.translate(object.x, object.y);
+        ctx.rotate(object.angle);
+        const flame = ctx.createLinearGradient(-object.radius * 2.6, 0, 0, 0);
+        flame.addColorStop(0, "rgba(255, 107, 139, 0)");
+        flame.addColorStop(0.42, "rgba(255, 107, 139, 0.34)");
+        flame.addColorStop(1, "rgba(255, 209, 102, 0.58)");
+        ctx.fillStyle = flame;
+        ctx.beginPath();
+        ctx.moveTo(-object.radius * 2.7, -object.radius * 0.68);
+        ctx.lineTo(-object.radius * 0.12, -object.radius);
+        ctx.lineTo(object.radius * 0.22, object.radius * 0.8);
+        ctx.lineTo(-object.radius * 2.45, object.radius * 0.66);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "#77656f";
+        ctx.strokeStyle = "#ffb06b";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < object.shape.length; i += 1) {
+          const point = object.shape[i];
+          if (i === 0) ctx.moveTo(point.x, point.y);
+          else ctx.lineTo(point.x, point.y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(22, 17, 23, 0.36)";
+        ctx.beginPath();
+        ctx.arc(-object.radius * 0.22, -object.radius * 0.16, object.radius * 0.2, 0, Math.PI * 2);
+        ctx.arc(object.radius * 0.28, object.radius * 0.2, object.radius * 0.16, 0, Math.PI * 2);
+        ctx.arc(object.radius * 0.08, -object.radius * 0.42, object.radius * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawShard(object) {
+        drawObjectTrail(object, object.color);
+        ctx.save();
+        ctx.translate(object.x, object.y);
+        ctx.rotate(object.angle);
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = object.color;
+        const gem = ctx.createLinearGradient(-object.radius, -object.radius, object.radius, object.radius);
+        gem.addColorStop(0, "#f8fbff");
+        gem.addColorStop(0.38, object.color);
+        gem.addColorStop(1, "#241827");
+        ctx.fillStyle = gem;
+        ctx.strokeStyle = "rgba(255,255,255,0.74)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(0, -object.radius * 1.15);
+        ctx.lineTo(object.radius * 0.8, -object.radius * 0.1);
+        ctx.lineTo(object.radius * 0.28, object.radius * 1.16);
+        ctx.lineTo(-object.radius * 0.72, object.radius * 0.34);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = 0.46;
+        ctx.strokeStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.moveTo(0, -object.radius * 1.1);
+        ctx.lineTo(0, object.radius * 1.08);
+        ctx.moveTo(-object.radius * 0.62, object.radius * 0.26);
+        ctx.lineTo(object.radius * 0.72, -object.radius * 0.08);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawCore(object) {
+        drawObjectTrail(object, "#ffd166");
+        ctx.save();
+        ctx.translate(object.x, object.y);
+        ctx.rotate(object.angle);
+        ctx.shadowBlur = 24;
+        ctx.shadowColor = "#ffd166";
+        drawStar(0, 0, 5, object.radius, object.radius * 0.43, "#ffd166");
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.9;
+        drawStar(0, 0, 5, object.radius * 0.54, object.radius * 0.22, "#fff8c7");
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      function drawShield(object) {
+        drawObjectTrail(object, "#79ffd7");
+        ctx.save();
+        ctx.translate(object.x, object.y);
+        ctx.rotate(object.angle);
+        ctx.strokeStyle = "#79ffd7";
+        ctx.fillStyle = "rgba(121, 255, 215, 0.17)";
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = "#79ffd7";
+        ctx.beginPath();
+        ctx.moveTo(0, -object.radius);
+        ctx.lineTo(object.radius * 0.86, -object.radius * 0.36);
+        ctx.quadraticCurveTo(object.radius * 0.65, object.radius * 0.68, 0, object.radius * 1.08);
+        ctx.quadraticCurveTo(-object.radius * 0.65, object.radius * 0.68, -object.radius * 0.86, -object.radius * 0.36);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawPlayerTrail() {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        for (const point of player.trail) {
+          const alpha = clamp(point.life / 0.28, 0, 1);
+          const glow = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, point.size * 2.2);
+          glow.addColorStop(0, `rgba(121, 255, 215, ${0.26 * alpha})`);
+          glow.addColorStop(0.48, `rgba(125, 200, 255, ${0.14 * alpha})`);
+          glow.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, point.size * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawPlayer() {
+        drawPlayerTrail();
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.rotate(player.lean * 0.28);
+
+        if (state.invincible > 0 || state.dashActive > 0) {
+          const alpha = state.dashActive > 0 ? 0.72 : 0.36 + Math.sin(state.time * 20) * 0.14;
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = state.dashActive > 0 ? "#7dc8ff" : "#79ffd7";
+          ctx.lineWidth = state.dashActive > 0 ? 4 : 3;
+          ctx.shadowBlur = 24;
+          ctx.shadowColor = ctx.strokeStyle;
+          ctx.beginPath();
+          ctx.arc(0, 0, player.radius * (state.dashActive > 0 ? 1.58 : 1.34), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
+        }
+
+        const flameHeight = (state.dashActive > 0 ? 44 : 25) + Math.sin(state.time * 24) * 5;
+        const flame = ctx.createLinearGradient(0, 16, 0, flameHeight + 34);
+        flame.addColorStop(0, "#fff8c7");
+        flame.addColorStop(0.36, "#ffd166");
+        flame.addColorStop(0.72, "#ff6b8b");
+        flame.addColorStop(1, "rgba(255, 107, 139, 0)");
+        ctx.fillStyle = flame;
+        ctx.beginPath();
+        ctx.moveTo(-10, 17);
+        ctx.quadraticCurveTo(0, flameHeight + 34, 10, 17);
+        ctx.closePath();
+        ctx.fill();
+
+        const wing = ctx.createLinearGradient(-34, 2, 34, 28);
+        wing.addColorStop(0, "#7dc8ff");
+        wing.addColorStop(0.5, "#ffd166");
+        wing.addColorStop(1, "#ff6b8b");
+        ctx.fillStyle = wing;
+        ctx.beginPath();
+        ctx.moveTo(-18, 14);
+        ctx.lineTo(-36, 31);
+        ctx.lineTo(-24, -2);
+        ctx.closePath();
+        ctx.moveTo(18, 14);
+        ctx.lineTo(36, 31);
+        ctx.lineTo(24, -2);
+        ctx.closePath();
+        ctx.fill();
+
+        const body = ctx.createLinearGradient(-20, -30, 20, 26);
+        body.addColorStop(0, "#f8fbff");
+        body.addColorStop(0.42, "#79ffd7");
+        body.addColorStop(1, "#7dc8ff");
+        ctx.fillStyle = body;
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = "rgba(121,255,215,0.35)";
+        ctx.beginPath();
+        ctx.moveTo(0, -34);
+        ctx.bezierCurveTo(17, -12, 22, 7, 17, 20);
+        ctx.lineTo(0, 9);
+        ctx.lineTo(-17, 20);
+        ctx.bezierCurveTo(-22, 7, -17, -12, 0, -34);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = "rgba(7, 16, 30, 0.78)";
+        ctx.beginPath();
+        ctx.ellipse(0, -10, 7.5, 11.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(248, 251, 255, 0.52)";
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawParticles() {
+        for (const particle of state.particles) {
+          const alpha = clamp(particle.life / particle.maxLife, 0, 1);
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.r * (0.7 + alpha * 0.55), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function drawFloaters() {
+        ctx.save();
+        ctx.font = "700 15px Inter, Microsoft YaHei, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        for (const floater of state.floaters) {
+          const alpha = clamp(floater.life / floater.maxLife, 0, 1);
+          ctx.globalAlpha = alpha;
+          ctx.shadowBlur = 14;
+          ctx.shadowColor = floater.color;
+          ctx.fillStyle = floater.color;
+          ctx.fillText(floater.text, floater.x, floater.y);
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      function drawShockwaves() {
+        ctx.save();
+        for (const wave of state.shockwaves) {
+          const alpha = clamp(wave.life / wave.maxLife, 0, 1);
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = wave.color;
+          ctx.lineWidth = 4 * alpha;
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = wave.color;
+          ctx.beginPath();
+          ctx.arc(wave.x, wave.y, wave.r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      function render(dt) {
+        drawBackground(dt);
+
+        ctx.save();
+        if (state.shake > 0) {
+          const strength = state.shake * 30;
+          ctx.translate(rand(-strength, strength), rand(-strength, strength));
+        }
+
+        for (const object of state.objects) {
+          if (object.type === "meteor") drawMeteor(object);
+          else if (object.type === "shard") drawShard(object);
+          else if (object.type === "shield") drawShield(object);
+          else drawCore(object);
+        }
+
+        drawShockwaves();
+        drawParticles();
+        drawPlayer();
+        drawFloaters();
+        ctx.restore();
+
+        if (state.flash > 0) {
+          ctx.globalAlpha = state.flash * 1.7;
+          ctx.fillStyle = "#f8fbff";
+          ctx.fillRect(0, 0, state.width, state.height);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      function loop(now) {
+        const dt = Math.min(0.033, (now - state.lastTime) / 1000 || 0);
+        state.lastTime = now;
+        update(dt);
+        render(dt);
+        requestAnimationFrame(loop);
+      }
+
+      function holdButton(button, code) {
+        const down = (event) => {
+          event.preventDefault();
+          state.keys.add(code);
+          button.classList.add("is-down");
+        };
+        const up = (event) => {
+          event.preventDefault();
+          state.keys.delete(code);
+          button.classList.remove("is-down");
+        };
+        button.addEventListener("pointerdown", down);
+        button.addEventListener("pointerup", up);
+        button.addEventListener("pointerleave", up);
+        button.addEventListener("pointercancel", up);
+      }
+
+      window.addEventListener("resize", resize);
+      window.addEventListener("keydown", (event) => {
+        if (["ArrowLeft", "ArrowRight", "KeyA", "KeyD"].includes(event.code)) {
+          event.preventDefault();
+          state.keys.add(event.code);
+        }
+        if (event.code === "ShiftLeft" || event.code === "ShiftRight" || event.code === "Space") {
+          event.preventDefault();
+          if (!state.playing || state.ended || state.paused) {
+            if (!state.playing || state.ended) reset();
+            else setPause(false);
+          } else {
+            triggerDash();
+          }
+        }
+        if (event.code === "KeyP" || event.code === "Escape") {
+          event.preventDefault();
+          setPause(!state.paused);
+        }
+        if (event.code === "Enter" && (!state.playing || state.ended || state.paused)) {
+          event.preventDefault();
+          if (state.paused && state.playing) setPause(false);
+          else reset();
+        }
+      });
+      window.addEventListener("keyup", (event) => state.keys.delete(event.code));
+
+      canvas.addEventListener("pointerdown", (event) => {
+        if (!state.playing || state.paused) return;
+        state.pointerX = event.clientX;
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        if (state.pointerX !== null) state.pointerX = event.clientX;
+      });
+      canvas.addEventListener("pointerup", () => {
+        state.pointerX = null;
+      });
+      canvas.addEventListener("pointercancel", () => {
+        state.pointerX = null;
+      });
+
+      startButton.addEventListener("click", () => {
+        if (state.paused && state.playing) setPause(false);
+        else reset();
+      });
+      soundButton.addEventListener("click", () => {
+        state.muted = !state.muted;
+        storage.set("starDodgeMuted", state.muted ? "1" : "0");
+        updateSoundIcon();
+        if (!state.muted) playSound("collect");
+      });
+      pauseButton.addEventListener("click", () => setPause(!state.paused));
+      restartButton.addEventListener("click", reset);
+      dashButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        dashButton.classList.add("is-down");
+        triggerDash();
+      });
+      dashButton.addEventListener("pointerup", () => dashButton.classList.remove("is-down"));
+      dashButton.addEventListener("pointerleave", () => dashButton.classList.remove("is-down"));
+      dashButton.addEventListener("pointercancel", () => dashButton.classList.remove("is-down"));
+      holdButton(leftButton, "ArrowLeft");
+      holdButton(rightButton, "ArrowRight");
+
+      resize();
+      updateSoundIcon();
+      updateHud();
+      showOverlay("星轨闪避", "穿过星潮，夺回星核。", "开始", false);
+      requestAnimationFrame((now) => {
+        state.lastTime = now;
+        requestAnimationFrame(loop);
+      });
+    })();
+  </script>
+</body>
+</html>

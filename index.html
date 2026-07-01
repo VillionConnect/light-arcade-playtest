@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
+  <title>轻游台</title>
+  <link rel="stylesheet" href="assets/arcade.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="轻游台首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2 16 10l6 2-6 2-4 8-4-8-6-2 6-2z"></path>
+          </svg>
+        </span>
+        <span>
+          <h1>轻游台</h1>
+          <p>大陆优先、可运营、可扩展的小游戏入口</p>
+        </span>
+      </a>
+      <div class="top-actions">
+        <button class="action" type="button" data-refresh aria-label="刷新清单">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 11a8 8 0 1 1-2.34-5.66"></path>
+            <path d="M20 4v7h-7"></path>
+          </svg>
+        </button>
+        <a class="action" href="MAINLAND_OPERATION_PLAN.md" aria-label="大陆运营路线">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M8 13h8"></path>
+            <path d="M8 17h6"></path>
+          </svg>
+        </a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">MAINLAND READY ARCADE</p>
+        <h2>先用游戏吸引玩家，再稳稳接住商业化。</h2>
+        <p>当前是纯静态原型，适合快速试玩。正式面向大陆用户时，建议迁移到国内云、备案域名和国内 CDN，再按广告、账号、充值、存档和平台上架逐步扩展。</p>
+      </div>
+      <aside class="status-panel" aria-label="站点状态">
+        <div class="metric">
+          <small>游戏数</small>
+          <strong data-total>0</strong>
+        </div>
+        <div class="metric">
+          <small>可玩</small>
+          <strong data-live>0</strong>
+        </div>
+        <div class="metric">
+          <small>最近更新</small>
+          <strong data-updated>-</strong>
+        </div>
+      </aside>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <h2>游戏库</h2>
+        <p>选择一个游戏开始，横屏和竖屏都会自动适配。广告和充值能力将通过独立配置层接入。</p>
+        </div>
+        <input class="search" type="search" placeholder="搜索小游戏" aria-label="搜索小游戏" data-search>
+      </div>
+      <div class="games" data-games></div>
+    </section>
+
+    <section class="ops" aria-label="维护策略">
+      <article class="ops-card">
+        <h3>大陆访问</h3>
+        <p>正式上线建议使用国内云、国内 CDN、备案域名和 HTTPS，避免海外服务影响访问稳定性。</p>
+      </article>
+      <article class="ops-card">
+        <h3>广告变现</h3>
+        <p>广告位先配置化，接国内广告平台或小游戏平台能力，保留频控和加载失败兜底。</p>
+      </article>
+      <article class="ops-card">
+        <h3>充值上架</h3>
+        <p>充值需要后端订单、实名、防沉迷、支付回调和对账；平台上架则单独做适配层。</p>
+      </article>
+    </section>
+
+    <footer class="footer">
+      <span>轻游台 · 大陆优先小游戏站</span>
+      <span>备案信息待正式部署后填写</span>
+    </footer>
+  </main>
+  <script src="assets/arcade.js" defer></script>
+</body>
+</html>

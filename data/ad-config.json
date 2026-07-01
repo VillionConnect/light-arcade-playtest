@@ -1,0 +1,31 @@
+{
+  "enabled": false,
+  "region": "CN",
+  "mode": "placeholder",
+  "frequency": {
+    "interstitialEveryGames": 3,
+    "rewardedCooldownSeconds": 90,
+    "bannerRefreshSeconds": 60
+  },
+  "placements": [
+    {
+      "id": "home_top",
+      "type": "banner",
+      "enabled": false,
+      "description": "首页游戏列表上方横幅"
+    },
+    {
+      "id": "game_reward_continue",
+      "type": "rewarded",
+      "enabled": false,
+      "description": "结算页激励广告，可用于复活或奖励"
+    },
+    {
+      "id": "game_result_interstitial",
+      "type": "interstitial",
+      "enabled": false,
+      "description": "每若干局后展示一次插屏"
+    }
+  ],
+  "providers": []
+}
