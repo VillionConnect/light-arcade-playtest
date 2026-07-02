@@ -1513,7 +1513,8 @@
         state.objects = state.objects.filter((object) => {
           const dx = object.x - player.x;
           const dy = object.y - player.y;
-          const hitRadius = object.type === "core" || object.type === "shield" ? object.radius + 15 : object.radius + player.radius * 0.7;
+          const collectPadding = object.type === "core" ? 28 : object.type === "shield" ? 22 : 0;
+          const hitRadius = object.type === "core" || object.type === "shield" ? object.radius + collectPadding : object.radius + player.radius * 0.7;
           const hit = Math.hypot(dx, dy) < hitRadius;
           if (hit) {
             collectObject(object);
